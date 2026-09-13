@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { createAsset } from '@/lib/assets/engine';
+import { isAdmin } from '@/lib/rbac';
 
 export async function GET(req: NextRequest) {
   try {
@@ -30,6 +31,14 @@ export async function POST(req: NextRequest) {
   try {
     const user = await getAuthenticatedUser(req);
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    // Only administrators have permission to add asset inventory
+    if (!isAdmin(user)) {
+      return NextResponse.json(
+        { error: 'Forbidden: Only administrators have permission to add asset inventory.' },
+        { status: 403 }
+      );
+    }
 
     const body = await req.json();
     const asset = await createAsset({

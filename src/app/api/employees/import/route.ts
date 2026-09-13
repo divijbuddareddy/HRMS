@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { hasPermission, PERMISSIONS } from '@/lib/rbac';
+import { hasPermission, isAdmin, PERMISSIONS } from '@/lib/rbac';
 import { createAuditLog } from '@/lib/audit';
 import Papa from 'papaparse';
 
@@ -10,8 +10,11 @@ export async function POST(req: NextRequest) {
     const user = await getAuthenticatedUser(req);
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    if (!hasPermission(user, PERMISSIONS.EMPLOYEE_IMPORT)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (!isAdmin(user)) {
+      return NextResponse.json(
+        { error: 'Forbidden: Only administrators have access to bulk import employees.' },
+        { status: 403 }
+      );
     }
 
     const { csvContent } = await req.json();

@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
     const startDate = startOfMonth(new Date(year, month - 1, 1));
     const endDate = endOfMonth(new Date(year, month - 1, 1));
 
-    const [records, regularizations, employee] = await Promise.all([
+    const [records, regularizations, employee, rawPunches, allEmployees] = await Promise.all([
       prisma.dailyAttendanceRecord.findMany({
         where: {
           tenantId: user.tenantId,
@@ -36,20 +36,43 @@ export async function GET(req: NextRequest) {
           employeeId,
           requestedDate: { gte: startDate, lte: endDate },
         },
+        include: { employee: true },
         orderBy: { requestedDate: 'desc' },
       }),
       prisma.employee.findUnique({
         where: { id: employeeId },
-        select: { id: true, firstName: true, lastName: true, employeeCode: true, department: true },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          employeeCode: true,
+          department: true,
+          designation: true,
+          branchLocation: true,
+        },
+      }),
+      prisma.rawAttendancePunch.findMany({
+        where: {
+          tenantId: user.tenantId,
+          employeeId,
+          punchTimestamp: { gte: startDate, lte: endDate },
+        },
+        orderBy: { punchTimestamp: 'desc' },
+      }),
+      prisma.employee.findMany({
+        where: { tenantId: user.tenantId },
+        select: { id: true, firstName: true, lastName: true, employeeCode: true, workEmail: true },
+        orderBy: { firstName: 'asc' },
       }),
     ]);
 
-    // Compute monthly summaries
+    // Compute monthly summaries and IoT device metrics
     let presentCount = 0;
     let absentCount = 0;
     let halfDayCount = 0;
     let lateCount = 0;
     let totalWorkedMinutes = 0;
+    let overtimeMinutes = 0;
 
     for (const r of records) {
       if (r.status === 'PRESENT') presentCount += 1;
@@ -57,7 +80,22 @@ export async function GET(req: NextRequest) {
       else if (r.status === 'HALF_DAY') halfDayCount += 1;
       if (r.isLate) lateCount += 1;
       totalWorkedMinutes += r.totalWorkedMinutes;
+      overtimeMinutes += r.overtimeMinutes || 0;
     }
+
+    const deviceCounts: Record<string, number> = {
+      BIOMETRIC: 0,
+      MOBILE_GPS: 0,
+      QR: 0,
+      WEB: 0,
+    };
+
+    for (const p of rawPunches) {
+      const dev = p.deviceType || 'WEB';
+      deviceCounts[dev] = (deviceCounts[dev] || 0) + 1;
+    }
+
+    const totalPunches = rawPunches.length;
 
     return NextResponse.json({
       employee,
@@ -69,9 +107,21 @@ export async function GET(req: NextRequest) {
         halfDays: halfDayCount,
         lateDays: lateCount,
         totalWorkedHours: (totalWorkedMinutes / 60).toFixed(1),
+        overtimeHours: (overtimeMinutes / 60).toFixed(1),
+        onTimeComplianceRate: presentCount > 0 ? Math.round(((presentCount - lateCount) / presentCount) * 100) : 100,
+        deviceStats: {
+          biometricCount: deviceCounts.BIOMETRIC || 0,
+          mobileGpsCount: deviceCounts.MOBILE_GPS || 0,
+          qrCount: deviceCounts.QR || 0,
+          webCount: deviceCounts.WEB || 0,
+          totalPunches,
+          biometricRatio: totalPunches > 0 ? Math.round(((deviceCounts.BIOMETRIC || 0) / totalPunches) * 100) : 0,
+        },
       },
       records,
+      rawPunches,
       regularizations,
+      allEmployees,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

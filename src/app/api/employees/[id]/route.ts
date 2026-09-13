@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { hasPermission, sanitizeEmployeeForUser, PERMISSIONS } from '@/lib/rbac';
+import { hasPermission, sanitizeEmployeeForUser, isAdmin, PERMISSIONS } from '@/lib/rbac';
 import { createAuditLog } from '@/lib/audit';
 
 export async function GET(
@@ -52,8 +52,12 @@ export async function PUT(
     const user = await getAuthenticatedUser(req);
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    if (!hasPermission(user, PERMISSIONS.EMPLOYEE_WRITE)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    // Only administrators have access to edit employee data
+    if (!isAdmin(user)) {
+      return NextResponse.json(
+        { error: 'Forbidden: Only administrators have access to edit employee records.' },
+        { status: 403 }
+      );
     }
 
     const body = await req.json();
@@ -131,6 +135,55 @@ export async function PUT(
     });
 
     return NextResponse.json(updated);
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const user = await getAuthenticatedUser(req);
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    // Only administrators have access to delete employee records
+    if (!isAdmin(user)) {
+      return NextResponse.json(
+        { error: 'Forbidden: Only administrators have access to delete employee records.' },
+        { status: 403 }
+      );
+    }
+
+    const existing = await prisma.employee.findUnique({
+      where: { id },
+      include: { user: true },
+    });
+
+    if (!existing || existing.tenantId !== user.tenantId) {
+      return NextResponse.json({ error: 'Employee not found' }, { status: 404 });
+    }
+
+    await prisma.employee.delete({
+      where: { id },
+    });
+
+    await createAuditLog({
+      tenantId: user.tenantId,
+      actorId: user.userId,
+      actorRole: user.roles[0],
+      action: 'DELETE_EMPLOYEE',
+      entityType: 'EMPLOYEE',
+      entityId: id,
+      beforeState: existing,
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: `Employee ${existing.firstName} ${existing.lastName} (${existing.employeeCode}) deleted successfully.`,
+    });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

@@ -43,6 +43,15 @@ export const PERMISSIONS = {
   AUDIT_LOG_READ: 'audit_log:read',
 } as const;
 
+export function isAdmin(user: AuthUser | null | undefined): boolean {
+  if (!user || !user.roles) return false;
+  return (
+    user.roles.includes('COMPANY_ADMIN') ||
+    user.roles.includes('PLATFORM_SUPER_ADMIN') ||
+    user.roles.includes('HR_ADMIN')
+  );
+}
+
 export function hasPermission(
   user: AuthUser,
   permissionKey: string,

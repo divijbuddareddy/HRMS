@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { hasPermission, PERMISSIONS } from '@/lib/rbac';
+import { hasPermission, isAdmin, PERMISSIONS } from '@/lib/rbac';
 import { createAuditLog } from '@/lib/audit';
 
 export async function GET(req: NextRequest) {
@@ -34,8 +34,11 @@ export async function POST(req: NextRequest) {
     const user = await getAuthenticatedUser(req);
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    if (!hasPermission(user, PERMISSIONS.ORGANIZATION_MANAGE)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (!isAdmin(user) && !hasPermission(user, PERMISSIONS.ORGANIZATION_MANAGE)) {
+      return NextResponse.json(
+        { error: 'Forbidden: Only administrators have permission to modify organization structure.' },
+        { status: 403 }
+      );
     }
 
     const body = await req.json();

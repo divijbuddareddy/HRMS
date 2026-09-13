@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { hasPermission, getUserDataScope, sanitizeEmployeeForUser, PERMISSIONS } from '@/lib/rbac';
+import { hasPermission, getUserDataScope, sanitizeEmployeeForUser, isAdmin, PERMISSIONS } from '@/lib/rbac';
 import { createAuditLog } from '@/lib/audit';
 
 // Generate Tenant-Unique Employee ID based on pattern
@@ -71,8 +71,12 @@ export async function POST(req: NextRequest) {
     const user = await getAuthenticatedUser(req);
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    if (!hasPermission(user, PERMISSIONS.EMPLOYEE_WRITE)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    // Only administrators have access to create new employee records
+    if (!isAdmin(user)) {
+      return NextResponse.json(
+        { error: 'Forbidden: Only administrators have access to create employee records.' },
+        { status: 403 }
+      );
     }
 
     const body = await req.json();

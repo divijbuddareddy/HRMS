@@ -17,6 +17,10 @@ import {
   X,
   CreditCard,
   FileText,
+  Edit,
+  Trash2,
+  Lock,
+  Check,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -28,8 +32,15 @@ export default function EmployeesPage() {
   const [selectedDept, setSelectedDept] = useState('ALL');
   const [selectedEmp, setSelectedEmp] = useState<any | null>(null);
 
+  // Admin access check: only admins can create, edit, or delete employee data
+  const isAdmin =
+    user?.roles.includes('COMPANY_ADMIN') ||
+    user?.roles.includes('PLATFORM_SUPER_ADMIN') ||
+    user?.roles.includes('HR_ADMIN');
+
   // Modal states
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [orgData, setOrgData] = useState<any>(null);
 
@@ -48,6 +59,24 @@ export default function EmployeesPage() {
     aadhaarNumber: '',
     bankAccountNumber: '',
     bankName: 'HDFC Bank',
+  });
+
+  // Edit form state
+  const [editFormData, setEditFormData] = useState<any>({
+    id: '',
+    firstName: '',
+    lastName: '',
+    mobilePhone: '',
+    personalEmail: '',
+    departmentId: '',
+    designationId: '',
+    branchLocationId: '',
+    status: 'ACTIVE',
+    panNumber: '',
+    aadhaarNumber: '',
+    bankAccountNumber: '',
+    bankName: 'HDFC Bank',
+    bankIfsc: '',
   });
 
   // Import state
@@ -93,6 +122,10 @@ export default function EmployeesPage() {
 
   const handleCreateEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isAdmin) {
+      alert('Forbidden: Only administrators have access to add employees.');
+      return;
+    }
     try {
       const res = await fetch('/api/employees', {
         method: 'POST',
@@ -111,8 +144,82 @@ export default function EmployeesPage() {
     }
   };
 
+  const handleOpenEdit = (emp: any) => {
+    if (!isAdmin) {
+      alert('Forbidden: Only administrators have access to edit employee records.');
+      return;
+    }
+    setEditFormData({
+      id: emp.id,
+      firstName: emp.firstName,
+      lastName: emp.lastName,
+      mobilePhone: emp.mobilePhone || '',
+      personalEmail: emp.personalEmail || '',
+      departmentId: emp.departmentId,
+      designationId: emp.designationId,
+      branchLocationId: emp.branchLocationId,
+      status: emp.status,
+      panNumber: emp.identity?.panNumber || '',
+      aadhaarNumber: emp.identity?.aadhaarNumber || '',
+      bankAccountNumber: emp.bank?.accountNumber || '',
+      bankName: emp.bank?.bankName || 'HDFC Bank',
+      bankIfsc: emp.bank?.ifscCode || '',
+    });
+    setIsEditOpen(true);
+  };
+
+  const handleUpdateEmployee = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isAdmin) {
+      alert('Forbidden: Only administrators have access to edit employee records.');
+      return;
+    }
+    try {
+      const res = await fetch(`/api/employees/${editFormData.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editFormData),
+      });
+      if (res.ok) {
+        setIsEditOpen(false);
+        setSelectedEmp(null);
+        await fetchEmployees();
+      } else {
+        const d = await res.json();
+        alert(d.error || 'Failed to update employee');
+      }
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
+  const handleDeleteEmployee = async (empId: string, empName: string) => {
+    if (!isAdmin) {
+      alert('Forbidden: Only administrators have access to delete employee records.');
+      return;
+    }
+    if (!confirm(`Are you sure you want to permanently delete ${empName}? This will remove all associated user and employee data.`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/employees/${empId}`, {
+        method: 'DELETE',
+      });
+      const d = await res.json();
+      if (res.ok) {
+        setSelectedEmp(null);
+        setIsEditOpen(false);
+        await fetchEmployees();
+      } else {
+        alert(d.error || 'Failed to delete employee');
+      }
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
   const handleCsvImport = async () => {
-    if (!csvText) return;
+    if (!csvText || !isAdmin) return;
     setImporting(true);
     setImportResult(null);
     try {
@@ -147,7 +254,7 @@ Neha,Sharma,neha.sharma@aiautomationlabs.com,AIAL_IN,BLR_HQ,HR,HR_LEAD,1500000,A
   });
 
   return (
-    <DashboardLayout title="Employee Master & Directory" subtitle="Manage employee profiles, identity, bank, and lifecycle">
+    <DashboardLayout title="Employee Master & Directory" subtitle="Manage employee profiles, identity, bank, and organizational roles">
       <div className="space-y-6">
         {/* Action Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
@@ -176,24 +283,34 @@ Neha,Sharma,neha.sharma@aiautomationlabs.com,AIAL_IN,BLR_HQ,HR,HR_LEAD,1500000,A
             </select>
           </div>
 
+          {/* Admin-Only Action Controls */}
           <div className="flex items-center gap-2 w-full sm:w-auto">
-            <button
-              onClick={() => {
-                setCsvText(sampleCsvTemplate);
-                setIsImportOpen(true);
-              }}
-              className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs rounded-xl flex items-center gap-1.5 border border-slate-200 transition-colors"
-            >
-              <Upload className="h-3.5 w-3.5" />
-              Import CSV
-            </button>
-            <button
-              onClick={() => setIsAddOpen(true)}
-              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs rounded-xl flex items-center gap-1.5 shadow-sm shadow-emerald-600/20 transition-colors"
-            >
-              <UserPlus className="h-3.5 w-3.5" />
-              Add Employee
-            </button>
+            {isAdmin ? (
+              <>
+                <button
+                  onClick={() => {
+                    setCsvText(sampleCsvTemplate);
+                    setIsImportOpen(true);
+                  }}
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs rounded-xl flex items-center gap-1.5 border border-slate-200 transition-colors"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  Import CSV
+                </button>
+                <button
+                  onClick={() => setIsAddOpen(true)}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs rounded-xl flex items-center gap-1.5 shadow-sm shadow-emerald-600/20 transition-colors"
+                >
+                  <UserPlus className="h-3.5 w-3.5" />
+                  Add Employee
+                </button>
+              </>
+            ) : (
+              <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
+                <Lock className="h-3.5 w-3.5 text-slate-400" />
+                <span>Read-Only Directory</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -247,12 +364,32 @@ Neha,Sharma,neha.sharma@aiautomationlabs.com,AIAL_IN,BLR_HQ,HR,HR_LEAD,1500000,A
                       </span>
                     </td>
                     <td className="py-3.5 px-4 text-right">
-                      <button
-                        onClick={() => setSelectedEmp(emp)}
-                        className="px-2.5 py-1 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 rounded-lg text-slate-700 font-medium transition-colors border border-slate-200"
-                      >
-                        View Profile
-                      </button>
+                      <div className="flex justify-end items-center gap-1.5">
+                        <button
+                          onClick={() => setSelectedEmp(emp)}
+                          className="px-2.5 py-1 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 rounded-lg text-slate-700 font-medium transition-colors border border-slate-200"
+                        >
+                          View
+                        </button>
+                        {isAdmin && (
+                          <>
+                            <button
+                              onClick={() => handleOpenEdit(emp)}
+                              className="p-1.5 bg-slate-100 hover:bg-blue-50 hover:text-blue-700 rounded-lg text-slate-600 transition-colors border border-slate-200"
+                              title="Edit Employee"
+                            >
+                              <Edit className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteEmployee(emp.id, `${emp.firstName} ${emp.lastName}`)}
+                              className="p-1.5 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 rounded-lg text-slate-600 transition-colors border border-slate-200"
+                              title="Delete Employee"
+                            >
+                              <Trash2 className="h-3.5 w-3.5 text-rose-500" />
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -314,20 +451,219 @@ Neha,Sharma,neha.sharma@aiautomationlabs.com,AIAL_IN,BLR_HQ,HR,HR_LEAD,1500000,A
                 </div>
               </div>
 
-              <div className="pt-2 flex justify-end">
-                <button
-                  onClick={() => setSelectedEmp(null)}
-                  className="px-4 py-2 bg-slate-800 text-white rounded-xl text-xs font-medium"
-                >
-                  Close
-                </button>
+              <div className="pt-2 flex justify-between items-center border-t border-slate-100">
+                <div>
+                  {isAdmin && (
+                    <button
+                      onClick={() => {
+                        const empToDelete = selectedEmp;
+                        handleDeleteEmployee(empToDelete.id, `${empToDelete.firstName} ${empToDelete.lastName}`);
+                      }}
+                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-medium border border-rose-200 flex items-center gap-1"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Delete
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex gap-2">
+                  {isAdmin && (
+                    <button
+                      onClick={() => {
+                        const empToEdit = selectedEmp;
+                        setSelectedEmp(null);
+                        handleOpenEdit(empToEdit);
+                      }}
+                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-medium flex items-center gap-1"
+                    >
+                      <Edit className="h-3.5 w-3.5" />
+                      Edit Profile
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setSelectedEmp(null)}
+                    className="px-4 py-1.5 bg-slate-800 text-white rounded-xl text-xs font-medium"
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         )}
 
+        {/* Edit Employee Modal (Admin Only) */}
+        {isEditOpen && isAdmin && (
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
+            <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 my-8">
+              <div className="flex justify-between items-center border-b border-slate-100 pb-3 mb-4">
+                <h3 className="font-semibold text-slate-900 text-base flex items-center gap-2">
+                  <Edit className="h-5 w-5 text-emerald-600" />
+                  Edit Employee Record (Admin)
+                </h3>
+                <button onClick={() => setIsEditOpen(false)} className="p-1 hover:bg-slate-100 rounded-lg text-slate-400">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleUpdateEmployee} className="space-y-4 text-xs">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-medium text-slate-700 block mb-1">First Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={editFormData.firstName}
+                      onChange={(e) => setEditFormData({ ...editFormData, firstName: e.target.value })}
+                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-medium text-slate-700 block mb-1">Last Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={editFormData.lastName}
+                      onChange={(e) => setEditFormData({ ...editFormData, lastName: e.target.value })}
+                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-medium text-slate-700 block mb-1">Personal Email</label>
+                    <input
+                      type="email"
+                      value={editFormData.personalEmail}
+                      onChange={(e) => setEditFormData({ ...editFormData, personalEmail: e.target.value })}
+                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-medium text-slate-700 block mb-1">Mobile Phone</label>
+                    <input
+                      type="text"
+                      value={editFormData.mobilePhone}
+                      onChange={(e) => setEditFormData({ ...editFormData, mobilePhone: e.target.value })}
+                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-medium text-slate-700 block mb-1">Department</label>
+                    <select
+                      value={editFormData.departmentId}
+                      onChange={(e) => setEditFormData({ ...editFormData, departmentId: e.target.value })}
+                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    >
+                      {orgData?.departments?.map((d: any) => (
+                        <option key={d.id} value={d.id}>{d.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="font-medium text-slate-700 block mb-1">Designation</label>
+                    <select
+                      value={editFormData.designationId}
+                      onChange={(e) => setEditFormData({ ...editFormData, designationId: e.target.value })}
+                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    >
+                      {orgData?.designations?.map((d: any) => (
+                        <option key={d.id} value={d.id}>{d.title}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-medium text-slate-700 block mb-1">Branch Location</label>
+                    <select
+                      value={editFormData.branchLocationId}
+                      onChange={(e) => setEditFormData({ ...editFormData, branchLocationId: e.target.value })}
+                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    >
+                      {orgData?.branchLocations?.map((b: any) => (
+                        <option key={b.id} value={b.id}>{b.name} ({b.state})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="font-medium text-slate-700 block mb-1">Status</label>
+                    <select
+                      value={editFormData.status}
+                      onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
+                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    >
+                      <option value="ACTIVE">ACTIVE</option>
+                      <option value="PROBATION">PROBATION</option>
+                      <option value="CONFIRMED">CONFIRMED</option>
+                      <option value="NOTICE">NOTICE</option>
+                      <option value="EXITED">EXITED</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                  <span className="font-semibold text-slate-700 block">Identity & Banking (Admin Override)</span>
+                  <div className="grid grid-cols-2 gap-3">
+                    <input
+                      type="text"
+                      placeholder="PAN Number"
+                      value={editFormData.panNumber}
+                      onChange={(e) => setEditFormData({ ...editFormData, panNumber: e.target.value })}
+                      className="p-2 bg-white border border-slate-200 rounded-lg"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Aadhaar Number"
+                      value={editFormData.aadhaarNumber}
+                      onChange={(e) => setEditFormData({ ...editFormData, aadhaarNumber: e.target.value })}
+                      className="p-2 bg-white border border-slate-200 rounded-lg"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Bank Account Number"
+                      value={editFormData.bankAccountNumber}
+                      onChange={(e) => setEditFormData({ ...editFormData, bankAccountNumber: e.target.value })}
+                      className="p-2 bg-white border border-slate-200 rounded-lg"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Bank Name"
+                      value={editFormData.bankName}
+                      onChange={(e) => setEditFormData({ ...editFormData, bankName: e.target.value })}
+                      className="p-2 bg-white border border-slate-200 rounded-lg"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditOpen(false)}
+                    className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-medium shadow-sm shadow-emerald-600/20"
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
         {/* Add Employee Modal */}
-        {isAddOpen && (
+        {isAddOpen && isAdmin && (
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
             <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 my-8">
               <div className="flex justify-between items-center border-b border-slate-100 pb-3 mb-4">
@@ -499,7 +835,7 @@ Neha,Sharma,neha.sharma@aiautomationlabs.com,AIAL_IN,BLR_HQ,HR,HR_LEAD,1500000,A
         )}
 
         {/* CSV Import Modal */}
-        {isImportOpen && (
+        {isImportOpen && isAdmin && (
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4">
               <div className="flex justify-between items-center border-b border-slate-100 pb-3">

@@ -522,7 +522,7 @@ export async function seedDatabase() {
   const daysInCycle = eachDayOfInterval({ start: monthStart, end: today });
 
   for (const emp of [adminEmp, hrEmp, finEmp, managerEmp, emp1, emp2]) {
-    for (const day of daysInCycle) {
+    for (const [idx, day] of daysInCycle.entries()) {
       if (isWeekend(day)) {
         await prisma.dailyAttendanceRecord.upsert({
           where: { tenantId_employeeId_date: { tenantId: tenant.id, employeeId: emp.id, date: day } },
@@ -536,33 +536,57 @@ export async function seedDatabase() {
           },
         });
       } else {
+        const isLateDay = idx % 5 === 0;
+        const checkInHour = isLateDay ? 9 : 9;
+        const checkInMinute = isLateDay ? 48 : (15 + (idx % 12));
+        
         const checkInTime = new Date(day);
-        checkInTime.setHours(9, 30, 0, 0);
+        checkInTime.setHours(checkInHour, checkInMinute, 0, 0);
         const checkOutTime = new Date(day);
-        checkOutTime.setHours(18, 30, 0, 0);
+        checkOutTime.setHours(18, 30 + (idx % 25), 0, 0);
 
-        // Immutable raw punch
+        // Alternate IoT devices: Biometric Terminal BLR-01, Mobile GPS, RFID Turnstile, Face Recognition Kiosk
+        const deviceTypes = ['BIOMETRIC', 'BIOMETRIC', 'MOBILE_GPS', 'BIOMETRIC', 'QR'];
+        const chosenDevice = deviceTypes[(idx + emp.employeeCode.charCodeAt(emp.employeeCode.length - 1)) % deviceTypes.length];
+        const isGeofenced = true;
+        const latitude = 12.9716 + (Math.random() * 0.0008 - 0.0004);
+        const longitude = 77.5946 + (Math.random() * 0.0008 - 0.0004);
+
+        // Immutable raw punch check-in
         await prisma.rawAttendancePunch.create({
           data: {
             tenantId: tenant.id,
             employeeId: emp.id,
             punchTimestamp: checkInTime,
             punchType: 'CHECK_IN',
-            deviceType: 'WEB',
-            isGeofenced: true,
+            deviceType: chosenDevice,
+            latitude,
+            longitude,
+            accuracy: 8.5,
+            ipAddress: chosenDevice === 'BIOMETRIC' ? '192.168.1.140' : '106.51.78.22',
+            isGeofenced,
+            verificationStatus: 'VERIFIED',
           },
         });
 
+        // Immutable raw punch check-out
         await prisma.rawAttendancePunch.create({
           data: {
             tenantId: tenant.id,
             employeeId: emp.id,
             punchTimestamp: checkOutTime,
             punchType: 'CHECK_OUT',
-            deviceType: 'WEB',
-            isGeofenced: true,
+            deviceType: chosenDevice,
+            latitude,
+            longitude,
+            accuracy: 8.5,
+            ipAddress: chosenDevice === 'BIOMETRIC' ? '192.168.1.140' : '106.51.78.22',
+            isGeofenced,
+            verificationStatus: 'VERIFIED',
           },
         });
+
+        const workedMinutes = Math.round((checkOutTime.getTime() - checkInTime.getTime()) / 60000);
 
         await prisma.dailyAttendanceRecord.upsert({
           where: { tenantId_employeeId_date: { tenantId: tenant.id, employeeId: emp.id, date: day } },
@@ -573,8 +597,10 @@ export async function seedDatabase() {
             date: day,
             firstCheckIn: checkInTime,
             lastCheckOut: checkOutTime,
-            totalWorkedMinutes: 540,
+            totalWorkedMinutes: workedMinutes,
             status: 'PRESENT',
+            isLate: isLateDay,
+            lateMinutes: isLateDay ? 18 : 0,
             shiftId: standardShift.id,
           },
         });
@@ -604,8 +630,16 @@ export async function seedDatabase() {
     },
   });
 
-  const cand1 = await prisma.candidate.create({
-    data: {
+  const cand1 = await prisma.candidate.upsert({
+    where: {
+      tenantId_jobRequisitionId_email: {
+        tenantId: tenant.id,
+        jobRequisitionId: jobReq.id,
+        email: 'kavita.k@example.com',
+      },
+    },
+    update: {},
+    create: {
       tenantId: tenant.id,
       jobRequisitionId: jobReq.id,
       firstName: 'Kavita',
@@ -623,8 +657,16 @@ export async function seedDatabase() {
     },
   });
 
-  await prisma.candidate.create({
-    data: {
+  await prisma.candidate.upsert({
+    where: {
+      tenantId_jobRequisitionId_email: {
+        tenantId: tenant.id,
+        jobRequisitionId: jobReq.id,
+        email: 'arjun.s@example.com',
+      },
+    },
+    update: {},
+    create: {
       tenantId: tenant.id,
       jobRequisitionId: jobReq.id,
       firstName: 'Arjun',
@@ -718,33 +760,43 @@ export async function seedDatabase() {
     },
   });
 
-  await prisma.performanceGoal.create({
-    data: {
-      performanceCycleId: perfCycle.id,
-      employeeId: emp1.id,
-      title: 'Architect Real-Time Multi-Tenant Payroll Engine',
-      description: 'Deliver sub-100ms payroll calculation pipeline with 100% test coverage on statutory formulas.',
-      category: 'OKR',
-      weight: 50.0,
-      targetValue: '100%',
-      actualValue: '95%',
-      progressPercent: 95,
-    },
+  const existingGoal1 = await prisma.performanceGoal.findFirst({
+    where: { performanceCycleId: perfCycle.id, employeeId: emp1.id, title: 'Architect Real-Time Multi-Tenant Payroll Engine' }
   });
+  if (!existingGoal1) {
+    await prisma.performanceGoal.create({
+      data: {
+        performanceCycleId: perfCycle.id,
+        employeeId: emp1.id,
+        title: 'Architect Real-Time Multi-Tenant Payroll Engine',
+        description: 'Deliver sub-100ms payroll calculation pipeline with 100% test coverage on statutory formulas.',
+        category: 'OKR',
+        weight: 50.0,
+        targetValue: '100%',
+        actualValue: '95%',
+        progressPercent: 95,
+      },
+    });
+  }
 
-  await prisma.performanceGoal.create({
-    data: {
-      performanceCycleId: perfCycle.id,
-      employeeId: emp1.id,
-      title: 'Zero-Downtime Multi-Region Disaster Recovery',
-      description: 'Automate replication failovers and tenant database backups.',
-      category: 'OKR',
-      weight: 50.0,
-      targetValue: '100%',
-      actualValue: '100%',
-      progressPercent: 100,
-    },
+  const existingGoal2 = await prisma.performanceGoal.findFirst({
+    where: { performanceCycleId: perfCycle.id, employeeId: emp1.id, title: 'Zero-Downtime Multi-Region Disaster Recovery' }
   });
+  if (!existingGoal2) {
+    await prisma.performanceGoal.create({
+      data: {
+        performanceCycleId: perfCycle.id,
+        employeeId: emp1.id,
+        title: 'Zero-Downtime Multi-Region Disaster Recovery',
+        description: 'Automate replication failovers and tenant database backups.',
+        category: 'OKR',
+        weight: 50.0,
+        targetValue: '100%',
+        actualValue: '100%',
+        progressPercent: 100,
+      },
+    });
+  }
 
   // 18. Phase 2: Expense Categories & Sample Claim
   const expTravel = await prisma.expenseCategory.upsert({
@@ -771,19 +823,24 @@ export async function seedDatabase() {
     },
   });
 
-  await prisma.expenseClaim.create({
-    data: {
-      tenantId: tenant.id,
-      employeeId: emp1.id,
-      expenseCategoryId: expTravel.id,
-      claimDate: new Date('2026-05-10'),
-      amount: 14500,
-      description: 'Flight tickets for AI Innovation Summit Bengaluru-Mumbai',
-      receiptUrl: 'https://placehold.co/600x400/png?text=Flight+Invoice+Verified',
-      status: 'FINANCE_APPROVED',
-      paymentMethod: 'PAYROLL_REIMBURSEMENT',
-    },
+  const existingExpense = await prisma.expenseClaim.findFirst({
+    where: { tenantId: tenant.id, employeeId: emp1.id, expenseCategoryId: expTravel.id }
   });
+  if (!existingExpense) {
+    await prisma.expenseClaim.create({
+      data: {
+        tenantId: tenant.id,
+        employeeId: emp1.id,
+        expenseCategoryId: expTravel.id,
+        claimDate: new Date('2026-05-10'),
+        amount: 14500,
+        description: 'Flight tickets for AI Innovation Summit Bengaluru-Mumbai',
+        receiptUrl: 'https://placehold.co/600x400/png?text=Flight+Invoice+Verified',
+        status: 'FINANCE_APPROVED',
+        paymentMethod: 'PAYROLL_REIMBURSEMENT',
+      },
+    });
+  }
 
   // 19. Phase 2: Hardware IT Assets
   const asset1 = await prisma.asset.upsert({
@@ -802,15 +859,20 @@ export async function seedDatabase() {
     },
   });
 
-  await prisma.assetAssignment.create({
-    data: {
-      assetId: asset1.id,
-      employeeId: emp1.id,
-      assignedDate: new Date('2025-10-20'),
-      condition: 'NEW',
-      notes: 'Pristine factory sealed issue',
-    },
+  const existingAssignment = await prisma.assetAssignment.findFirst({
+    where: { assetId: asset1.id, employeeId: emp1.id }
   });
+  if (!existingAssignment) {
+    await prisma.assetAssignment.create({
+      data: {
+        assetId: asset1.id,
+        employeeId: emp1.id,
+        assignedDate: new Date('2025-10-20'),
+        condition: 'NEW',
+        notes: 'Pristine factory sealed issue',
+      },
+    });
+  }
 
   await prisma.asset.upsert({
     where: { tenantId_assetTag: { tenantId: tenant.id, assetTag: 'AST-MON-002' } },
@@ -829,33 +891,38 @@ export async function seedDatabase() {
   });
 
   // 20. Phase 2: Exit & Full & Final (F&F) Case
-  const exitCase = await prisma.exitRequest.create({
-    data: {
-      tenantId: tenant.id,
-      employeeId: emp2.id,
-      resignationDate: new Date('2026-05-01'),
-      requestedLwd: new Date('2026-05-31'),
-      approvedLwd: new Date('2026-05-31'),
-      reason: 'Pursuing higher studies / research abroad',
-      status: 'CLEARANCE_IN_PROGRESS',
-      itClearanceStatus: 'CLEARED',
-      financeClearanceStatus: 'CLEARED',
-      adminClearanceStatus: 'CLEARED',
-      settlement: {
-        create: {
-          payableDays: 30,
-          earnedSalaryAmount: 116667,
-          leaveEncashmentDays: 10,
-          leaveEncashmentAmount: 38889,
-          noticePayShortfallDays: 0,
-          noticeRecoveryAmount: 0,
-          gratuityAmount: 0, // < 5 yrs
-          finalSettlementAmount: 155556,
-          status: 'CALCULATED',
+  const existingExit = await prisma.exitRequest.findFirst({
+    where: { tenantId: tenant.id, employeeId: emp2.id }
+  });
+  if (!existingExit) {
+    await prisma.exitRequest.create({
+      data: {
+        tenantId: tenant.id,
+        employeeId: emp2.id,
+        resignationDate: new Date('2026-05-01'),
+        requestedLwd: new Date('2026-05-31'),
+        approvedLwd: new Date('2026-05-31'),
+        reason: 'Pursuing higher studies / research abroad',
+        status: 'CLEARANCE_IN_PROGRESS',
+        itClearanceStatus: 'CLEARED',
+        financeClearanceStatus: 'CLEARED',
+        adminClearanceStatus: 'CLEARED',
+        settlement: {
+          create: {
+            payableDays: 30,
+            earnedSalaryAmount: 116667,
+            leaveEncashmentDays: 10,
+            leaveEncashmentAmount: 38889,
+            noticePayShortfallDays: 0,
+            noticeRecoveryAmount: 0,
+            gratuityAmount: 0, // < 5 yrs
+            finalSettlementAmount: 155556,
+            status: 'CALCULATED',
+          },
         },
       },
-    },
-  });
+    });
+  }
 
   // 21. Phase 2: Second Tenant for Super Admin Multi-Tenancy Validation
   const tenant2 = await prisma.tenant.upsert({

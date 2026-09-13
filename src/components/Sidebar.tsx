@@ -20,7 +20,6 @@ import {
   Receipt,
   Laptop,
   LogOut,
-  Bot,
   Crown,
 } from 'lucide-react';
 
@@ -52,7 +51,6 @@ export const Sidebar: React.FC = () => {
   ];
 
   const platformNav = [
-    { label: 'AI Copilot', href: '/ai-copilot', icon: Bot },
     ...(isHR || isFinance || isCompanyAdmin
       ? [{ label: 'Audit Trail', href: '/audit', icon: History }]
       : []),
@@ -91,6 +89,7 @@ export const Sidebar: React.FC = () => {
                 <Link
                   key={item.href}
                   href={item.href}
+                  prefetch={true}
                   className={`flex items-center gap-2.5 px-3 py-2 rounded-lg font-medium transition-all duration-150 ${
                     isActive
                       ? 'bg-emerald-600 text-white shadow-sm'
@@ -118,6 +117,7 @@ export const Sidebar: React.FC = () => {
                 <Link
                   key={item.href}
                   href={item.href}
+                  prefetch={true}
                   className={`flex items-center gap-2.5 px-3 py-2 rounded-lg font-medium transition-all duration-150 ${
                     isActive
                       ? 'bg-emerald-600 text-white shadow-sm'
@@ -132,32 +132,35 @@ export const Sidebar: React.FC = () => {
           </div>
         </div>
 
-        {/* AI & Governance */}
-        <div>
-          <div className="px-3 pb-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-            Intelligence & SaaS
+        {/* Governance & SaaS */}
+        {platformNav.length > 0 && (
+          <div>
+            <div className="px-3 pb-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+              Governance & Admin
+            </div>
+            <div className="space-y-0.5">
+              {platformNav.map((item) => {
+                const isActive = pathname === item.href;
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    prefetch={true}
+                    className={`flex items-center gap-2.5 px-3 py-2 rounded-lg font-medium transition-all duration-150 ${
+                      isActive
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                    }`}
+                  >
+                    <Icon className={`h-4 w-4 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </div>
           </div>
-          <div className="space-y-0.5">
-            {platformNav.map((item) => {
-              const isActive = pathname === item.href;
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg font-medium transition-all duration-150 ${
-                    isActive
-                      ? 'bg-emerald-600 text-white shadow-sm'
-                      : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                  }`}
-                >
-                  <Icon className={`h-4 w-4 ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Tenant Indicator Footer */}

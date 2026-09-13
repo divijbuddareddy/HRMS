@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { createJobRequisition } from '@/lib/ats/engine';
+import { isAdmin } from '@/lib/rbac';
 
 export async function GET(req: NextRequest) {
   try {
@@ -29,6 +30,14 @@ export async function POST(req: NextRequest) {
   try {
     const user = await getAuthenticatedUser(req);
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    // Only administrators can create job openings
+    if (!isAdmin(user)) {
+      return NextResponse.json(
+        { error: 'Forbidden: Only administrators have permission to create job openings.' },
+        { status: 403 }
+      );
+    }
 
     const body = await req.json();
     const job = await createJobRequisition({

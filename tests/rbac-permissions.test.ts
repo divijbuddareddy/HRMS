@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hasPermission, getUserDataScope, sanitizeEmployeeForUser, maskAadhaar, maskPAN, maskBankAccount } from '../src/lib/rbac';
+import { hasPermission, getUserDataScope, sanitizeEmployeeForUser, maskAadhaar, maskPAN, maskBankAccount, isAdmin } from '../src/lib/rbac';
 import { AuthUser } from '../src/lib/types';
 
 describe('1A & 1B. RBAC, Data Scopes & Sensitive Data Masking', () => {
@@ -8,6 +8,14 @@ describe('1A & 1B. RBAC, Data Scopes & Sensitive Data Masking', () => {
     tenantId: 'tenant_1',
     email: 'admin@company.com',
     roles: ['COMPANY_ADMIN'],
+    permissions: [],
+  };
+
+  const superAdminUser: AuthUser = {
+    userId: 'usr_super',
+    tenantId: 'tenant_1',
+    email: 'super@company.com',
+    roles: ['PLATFORM_SUPER_ADMIN'],
     permissions: [],
   };
 
@@ -50,6 +58,14 @@ describe('1A & 1B. RBAC, Data Scopes & Sensitive Data Masking', () => {
       { permissionKey: 'leave:apply', dataScope: 'OWN', isSensitive: false },
     ],
   };
+
+  it('should restrict edit and delete access to administrators only', () => {
+    expect(isAdmin(adminUser)).toBe(true);
+    expect(isAdmin(superAdminUser)).toBe(true);
+    expect(isAdmin(hrUser)).toBe(true);
+    expect(isAdmin(managerUser)).toBe(false);
+    expect(isAdmin(employeeUser)).toBe(false);
+  });
 
   it('should grant Company Admin full permissions automatically', () => {
     expect(hasPermission(adminUser, 'employee:read')).toBe(true);
